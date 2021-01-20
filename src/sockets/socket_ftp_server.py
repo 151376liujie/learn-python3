@@ -1,9 +1,15 @@
 import hashlib
 import json
+import logging
 import os
 import socket
 
+logging.basicConfig(format='%(name)s %(levelname)s %(pathname)s %(lineno)d %(asctime)s %(funcName)s: %(message)s',
+                    level=logging.INFO)
+
 from cmdException import CmdException
+
+logger = logging.getLogger(__name__)
 
 
 class FtpServer(object):
@@ -16,19 +22,19 @@ class FtpServer(object):
         self.socket.listen()
 
     def interactive(self):
-        print("========开始接收请求===========")
+        logger.info("========开始接收请求===========")
         while True:
-            print("开始等待新链接....")
+            logger.info("开始等待新链接....")
             client, addr = self.socket.accept()
-            print("请求来自: %s" % str(addr))
+            logger.info("请求来自: %s", str(addr))
             self._process_request(client, addr)
             client.close()
 
     def _process_request(self, client, addr):
         while True:
-            print("接收新命令~~~")
+            logger.info("接收新命令~~~")
             data = client.recv(1024).decode(encoding="utf-8")
-            print("receive message : [%s] from client: %s" % (data, addr))
+            logger.info("receive message : [%s] from client: %s", data, addr)
             if not data:
                 break
             request = None
@@ -39,10 +45,10 @@ class FtpServer(object):
                 func = getattr(self, "_cmd_%s" % request["action"])
                 func(request, client)
             except CmdException as cmdException:
-                print("cmd: [%s] error... msg: [%s]" % (request["action"], cmdException.message))
+                logger.warning("cmd: [%s] error... msg: [%s]", request["action"], cmdException.message)
                 client.send(str(cmdException).encode(encoding="utf-8"))
             except Exception as e:
-                print("cmd execute error... %s" % str(e))
+                logger.error("cmd execute error... %s", e)
                 cmd_res = "cmd error: %s" % str(e)
                 client.send(cmd_res.encode(encoding="utf-8"))
                 break
@@ -51,12 +57,12 @@ class FtpServer(object):
         if not os.path.isfile(request["filename"]):
             raise CmdException(500, "invalid command, [%s] is not file" % request["filename"])
         filesize = os.path.getsize(request["filename"])
-        print("文件: [%s]的大小为: [%d]" % (request["filename"], filesize))
+        logger.info("文件: [%s]的大小为: [%d]", request["filename"], filesize)
         # 发送文件大小
         client.send(str(filesize).encode(encoding="utf-8"))
         # 接受客户端ack消息
         client_ack = client.recv(1024)
-        print("客户端ack: %s" % client_ack)
+        logger.info("客户端ack: %s", client_ack)
         md5 = hashlib.md5()
         with open(request["filename"], mode='rb') as f:
             for line in f:
@@ -66,7 +72,7 @@ class FtpServer(object):
                 md5.update(line)
         # 发送文件的md5
         hexdigest = md5.hexdigest()
-        print("发送给客户端文件md5：", hexdigest)
+        logger.info("发送给客户端文件md5：%s", hexdigest)
         client.send(hexdigest.encode(encoding="utf-8"))
 
     def _cmd_put(self, request, client):
@@ -81,7 +87,7 @@ class FtpServer(object):
                 received_byte_count += len(msg)
                 f.write(msg)
             else:
-                print("文件接收完毕，共写入:[%d], 文件大小:[%d]" % (received_byte_count, filesize))
+                logger.info("文件接收完毕，共写入:[%d], 文件大小:[%d]", received_byte_count, filesize)
 
 
 if __name__ == '__main__':

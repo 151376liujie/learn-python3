@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import os
 import socket
 import time
@@ -8,7 +9,10 @@ import util
 from cmdException import CmdException
 from protocol import CMD_ERROR_MARK
 
-# logging.basicConfig()
+logging.basicConfig(format='%(name)s %(levelname)s %(pathname)s %(lineno)d %(asctime)s %(funcName)s: %(message)s',
+                    level=logging.INFO)
+
+logger = logging.getLogger(__name__)
 
 encoding = "utf-8"
 
@@ -25,7 +29,7 @@ class FtpClient(object):
         self.socket.connect((host, port))
 
     def help(self):
-        print("""------------------------------------------------
+        logger.info("""------------------------------------------------
         cmd list:
             [put localfile remotepath] 
             [get filename]
@@ -35,14 +39,14 @@ class FtpClient(object):
 ------------------------------------------------""")
 
     def interactive(self):
-        print("========开始发送请求===========")
+        logger.info("========开始发送请求===========")
         while True:
             self.help()
             cmd = input("input your command =>: ").lower().strip()
             if len(cmd) == 0:
                 continue
             if cmd in ['quit', 'exit']:
-                print("bye bye....")
+                logger.info("bye bye....")
                 self.socket.close()
                 break
             cmd_str = cmd.split()
@@ -52,11 +56,11 @@ class FtpClient(object):
             try:
                 func(*cmd_str)
             except CmdException as cmd_err:
-                print("cmd: [%s] error. msg: %s" % (cmd_str[0], str(cmd_err)))
+                logger.warning("cmd: [%s] error. msg: %s", cmd_str[0], str(cmd_err))
                 if cmd_err.send:
                     self.socket.send(cmd_err.message.encode("utf-8"))
             except Exception as e:
-                print("func: [%s] execute error. error msg: %s" % (func, str(e)))
+                logger.error("func: [%s] execute error. error msg: %s", func, str(e))
                 self.socket.close()
                 break
 
@@ -72,6 +76,7 @@ class FtpClient(object):
             "action": "auth",
             "filename": args[1]
         }
+        # TODO
 
     def _cmd_get(self, *args) -> None:
         """
@@ -90,19 +95,20 @@ class FtpClient(object):
             "filename": args[1]
         }
         count = self.socket.send(json.dumps(request).encode(encoding="utf-8"))
-        print("请求已发送个数：%d,等待响应" % count)
+        logger.info("请求已发送个数：%d,等待响应", count)
         received_byte_count = 0
         buffer_size = 1024
         # 先接受服务端返回的内容大小
         total_response_count = self.socket.recv(buffer_size).decode(encoding=encoding)
         if total_response_count.find(CMD_ERROR_MARK) != -1:
             exception = json.loads(total_response_count)
-            print("检测到异常信息: [%s]" % total_response_count)
-            raise CmdException(exception["code"], exception["message"], exception["send"])
-        print("返回的文件大小: [%s]" % total_response_count)
+            logger.warning("检测到异常信息: [%s]", total_response_count)
+            # 错误信息不发送给对方
+            raise CmdException(exception["code"], exception["message"], False)
+        logger.info("返回的文件大小: [%s]", total_response_count)
         # ack确认收到服务端发送的命令执行的大小
         self.socket.send(b'ack')
-        print("ack 服务端发送的响应大小。。。")
+        logger.info("ack 服务端发送的响应大小。。。")
         m = hashlib.md5()
         total_response_count = int(total_response_count)
         start = time.time()
@@ -117,15 +123,14 @@ class FtpClient(object):
                 received_byte_count += len(msg)
                 f.write(msg)
                 m.update(msg)
-                # print("received byte count: %d" % received_byte_count)
                 util.show_processing_bar(received_byte_count, total_response_count)
             else:
-                print("接收到的响应消息大小为：%d" % received_byte_count)
+                logger.info("接收到的响应消息大小为：%d", received_byte_count)
                 # 接收文件的MD5值
                 md5 = self.socket.recv(buffer_size).decode(encoding="utf-8")
                 end = time.time()
-                print("文件传输完毕，共耗时:", (end - start))
-                print("原文件md5值为   :", md5, "\n接收文件md5值为 :", m.hexdigest(), sep="")
+                logger.info("文件传输完毕，共耗时: %f", (end - start))
+                logger.info("原文件md5值为   :%s,接收文件md5值为 :%s", md5, m.hexdigest())
 
     def _cmd_put(self, *args):
         """
@@ -146,14 +151,17 @@ class FtpClient(object):
             "filename": args[2],
             "filesize": filesize
         }
-        print("发送命令给服务端:[%s]" % request)
+        logger.info("发送命令给服务端:[%s]", request)
         self.socket.send(json.dumps(request).encode(encoding))
         ack = self.socket.recv(1024)
+        already_send = 0
         with open(file=args[1], mode='rb') as f:
             for line in f:
                 # 发送文件内容
-                self.socket.send(line)
-        print("文件发送完毕")
+                already_send += self.socket.send(line)
+                util.show_processing_bar(already_send, filesize)
+            else:
+                logger.info("文件发送完毕")
 
 
 if __name__ == '__main__':
