@@ -3,11 +3,11 @@ import json
 import logging
 import os
 import socket
+from cmdException import CmdException
+from protocol import CMD_ERROR_MARK
 
 logging.basicConfig(format='%(name)s %(levelname)s %(pathname)s %(lineno)d %(asctime)s %(funcName)s: %(message)s',
                     level=logging.INFO)
-
-from cmdException import CmdException
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +48,8 @@ class FtpServer(object):
                 logger.warning("cmd: [%s] error... msg: [%s]", request["action"], cmdException.message)
                 client.send(str(cmdException).encode(encoding="utf-8"))
             except Exception as e:
-                logger.error("cmd execute error... %s", e)
-                cmd_res = "cmd error: %s" % str(e)
+                logger.exception("cmd execute error... ")
+                cmd_res = CMD_ERROR_MARK + "cmd error: %s" % str(e)
                 client.send(cmd_res.encode(encoding="utf-8"))
                 break
 

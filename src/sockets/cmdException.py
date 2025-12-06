@@ -1,7 +1,6 @@
 import json
-
+import logging
 from protocol import CMD_ERROR_MARK
-
 
 class CmdException(Exception):
 
@@ -27,7 +26,8 @@ class CmdException(Exception):
 
 
 if __name__ == '__main__':
+    logger = logging.getLogger(__name__)
     exception = CmdException(400, "erorr", False)
-    print(str(exception))
+    logger.warning(str(exception))
 
-    print(type(json.loads(str(exception))))
+    logger.info(type(json.loads(str(exception))))

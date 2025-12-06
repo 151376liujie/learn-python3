@@ -100,6 +100,7 @@ class FtpClient(object):
         buffer_size = 1024
         # 先接受服务端返回的内容大小
         total_response_count = self.socket.recv(buffer_size).decode(encoding=encoding)
+        logger.info("接收到服务器响应: %s", total_response_count)
         if total_response_count.find(CMD_ERROR_MARK) != -1:
             exception = json.loads(total_response_count)
             logger.warning("检测到异常信息: [%s]", total_response_count)
